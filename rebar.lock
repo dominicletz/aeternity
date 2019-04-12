@@ -26,7 +26,11 @@
   0},
  {<<"aestratum_lib">>,
   {git,"https://github.com/aeternity/aestratum_lib.git",
+<<<<<<< HEAD
       {ref,"96ffd9a36fab0d65640e87000e8466458276b8f3"}},
+=======
+      {ref,"5c8214542f7c1c34fcc5794d14c1168e7134c176"}},
+>>>>>>> Update aestratum_lib dependency
   0},
  {<<"base58">>,
   {git,"https://github.com/aeternity/erl-base58.git",

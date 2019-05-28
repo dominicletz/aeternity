@@ -83,7 +83,7 @@ references:
         # Install OTP binary package
         PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~trusty_amd64.deb
         OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/esl-erlang/FLAVOUR_1_general/${PACKAGE_NAME}
-        curl -vvv -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+        curl -vvv --resolve packages.erlang-solutions.com:443:31.172.186.53 -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
         sudo dpkg -i ${PACKAGE_NAME}
 
   install_libsodium: &install_libsodium

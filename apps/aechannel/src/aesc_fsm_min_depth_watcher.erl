@@ -340,7 +340,7 @@ init_cache_(#st{ last_block = LastBlock
      , chan_vsn   => Vsn }.
 
 %% The TxLog relies on the custom tx events (remember that it's a bounded list)
-find_tx_in_block(BHash, TxLog) ->
+find_tx_in_block(BHash, TxLog) -> %% TODO check tx_log usage (input / output from aesc_window:info_find)
     case aesc_window:info_find([{block_hash, BHash}], 2, TxLog) of
         false ->
             false;
@@ -736,7 +736,7 @@ log_tx(#{ tx_hash      := TxHash
         true ->
             St;
         false ->
-            TxLog1 = aesc_window:add({Key, Info}, TxLog),
+            TxLog1 = aesc_window:add({Key, Info}, TxLog), %% XXX Understand in/out
             St#st{tx_log = TxLog1}
     end.
 
@@ -773,7 +773,7 @@ get_txs_since(StopCond, Hash, ChId, C) ->
                                          , block_origin => chain } }, Acc1)
                             end, Acc, Txs)
                   end, TxLog, Found),
-            {TxLog1, C2};
+            {TxLog1, C2}; %% TODO Check this tx_log i.e. result of aesc_window:add
         {{error, Error}, _} ->
             lager:error("Bad StopCond (~p): ~p", [StopCond, Error]),
             error(bad_stop_condition)
@@ -961,7 +961,7 @@ in_main_chain_(Hash, C) ->
 
 update_tx_log(TxHash, BlockHash, #{tx_log := TxLog} =C)
   when is_binary(BlockHash) ->
-    C#{tx_log => aesc_window:add(
+    C#{tx_log => aesc_window:add( %% TODO Check result of this aesc_window_add
                    { {TxHash, BlockHash},
                      #{ tx_hash      => TxHash
                       , block_hash   => BlockHash

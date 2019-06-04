@@ -28,6 +28,7 @@
                    %% TODO Check element(2, S)
                  )
         ) ).
+-define(CALLBACK_MOD, aesc_fsm).
 
 -record(st, { parent
             , chan_id
@@ -45,8 +46,7 @@
                     | watch.
 
 -type req_info() :: #{ type         := any()
-                     , parent       := pid()
-                     , callback_mod := module() }.
+                     , parent       := pid() }.
 
 -type close_req() :: #{ mode      := close
                       , min_depth := aec_blocks:height()
@@ -107,26 +107,23 @@ watch_for_unlock(ChanId, Mod) ->
 watch_for_min_depth(Pid, TxHash, MinDepth, Mod, Info) when is_pid(Pid) ->
     gen_server:call(Pid, min_depth_req(TxHash, MinDepth, Mod, Info)).
 
-close_req(MinDepth, Mod) ->
+close_req(MinDepth, ?CALLBACK_MOD) ->
     #{ mode         => close
      , min_depth    => MinDepth
      , info         => #{ type  => close
-                        , parent => self()
-                        , callback_mod => Mod } }.
+                        , parent => self() } }.
 
-unlock_req(Mod) ->
+unlock_req(?CALLBACK_MOD) ->
     #{mode => unlock,
       info => #{ parent       => self()
-               , type         => closing
-               , callback_mod => Mod }}.
+               , type         => closing }}.
 
-min_depth_req(TxHash, MinDepth, Mod, Type) ->
+min_depth_req(TxHash, MinDepth, ?CALLBACK_MOD, Type) ->
     #{ mode      => tx_hash
      , min_depth => MinDepth
      , tx_hash   => TxHash
      , info      => #{ type         => Type
-                     , parent       => self()
-                     , callback_mod => Mod }}.
+                     , parent       => self() }}.
 
 get_txs_since({all_after_tx, _Hash} = StopCond, ChId) ->
     get_txs_since_(StopCond, ChId);
@@ -137,10 +134,9 @@ get_txs_since_(StopCond, ChId) ->
     get_txs_since(StopCond, aec_chain:top_block_hash(), ChId, #{}).
 
 
-start_link(Type, TxHash, ChanId, MinDepth, Mod) ->
+start_link(Type, TxHash, ChanId, MinDepth, ?CALLBACK_MOD) ->
     I = #{ parent       => self()
-         , type         => Type
-         , callback_mod => Mod },
+         , type         => Type },
     Reqs = [#{ mode      => tx_hash
              , tx_hash   => TxHash
              , min_depth => MinDepth
@@ -152,9 +148,8 @@ start_link(Type, TxHash, ChanId, MinDepth, Mod) ->
                                      requests => Reqs},
                           ?GEN_SERVER_OPTS).
 
-watch(Watcher, Type, TxHash, MinDepth, Mod) ->
-    I = #{ callback_mod => Mod
-         , type         => Type
+watch(Watcher, Type, TxHash, MinDepth, ?CALLBACK_MOD) ->
+    I = #{ type         => Type
          , parent       => self()},
     gen_server:call(Watcher, #{mode         => tx_hash,
                                tx_hash      => TxHash,
@@ -214,7 +209,6 @@ handle_info(_Msg, St) ->
 
 handle_call(#{ mode := _
              , info := #{ type := _
-                        , callback_mod := _
                         , parent := _}} = Req, From,
             #st{requests = Reqs} = St) ->
     case maps:find(tx_hash, Req) of
@@ -404,10 +398,9 @@ check_req(#{mode := close, locked_until := H} = R, #st{chan_id = ChId}, C) ->
     Min = maps:get(min_depth, R, 0),
     {TopHeight, C1} = top_height(C),
     if TopHeight >= (H + Min) ->
-            #{info := #{ callback_mod := Mod
-                       , parent       := Parent
+            #{info := #{ parent       := Parent
                        , type         := Type }} = R,
-            Mod:minimum_depth_achieved(Parent, ChId, Type, undefined),
+            aesc_fsm:minimum_depth_achieved(Parent, ChId, Type, undefined), %% ?CALLBACK_MOD
             {done, C1};
        true ->
             CheckAt = Min + H,
@@ -506,8 +499,8 @@ check_req(#{mode := tx_hash, tx_hash := TxHash, min_depth := MinDepth} = R,
             {R, C1};
         {Depth, C1} when Depth >= MinDepth ->
             lager:debug("min_depth achieved", []),
-            #{ info := #{callback_mod := Mod, type := Type} } = R,
-            Mod:minimum_depth_achieved(Parent, ChanId, Type, TxHash),
+            #{ info := #{type := Type} } = R,
+            aesc_fsm:minimum_depth_achieved(Parent, ChanId, Type, TxHash), %% ?CALLBACK_MOD
             {done, C1};
         {Depth, C1} ->
             lager:debug("min_depth not yet achieved", []),
@@ -542,8 +535,8 @@ watch_for_change_in_ch_status(Status, _CurHeight, R, St, C) ->
         #{changed := true} ->
             lager:debug("Channel has changed: ~p", [Status]),
             %% NextHeight = calc_next_height(Status, CurHeight, St),
-            #{callback_mod := Mod, parent := Parent} = maps:get(info, R),
-            C1 = report_status_change(Status, Mod, Parent, St, C),
+            #{parent := Parent} = maps:get(info, R),
+            C1 = report_status_change(Status, ?CALLBACK_MOD, Parent, St, C),
             {R, C1};
         _ ->
             lager:debug("No change in channel: ~p", [Status]),
@@ -551,7 +544,7 @@ watch_for_change_in_ch_status(Status, _CurHeight, R, St, C) ->
     end.
 
 report_status_change(#{channel := Ch, is_active := IsActive,
-                       tx := SignedTx}, Mod, Parent, St, C) ->
+                       tx := SignedTx}, ?CALLBACK_MOD, Parent, St, C) ->
     Event = if IsActive -> changed_on_chain;
                true     -> closing_on_chain
             end,
@@ -568,9 +561,9 @@ report_status_change(#{channel := Ch, is_active := IsActive,
       fun() ->
               case Event of
                   changed_on_chain ->
-                      Mod:channel_changed_on_chain(Parent, Info);
+                      aesc_fsm:channel_changed_on_chain(Parent, Info); %% ?CALLBACK_MOD
                   closing_on_chain ->
-                      Mod:channel_closing_on_chain(Parent, Info)
+                      aesc_fsm:channel_closing_on_chain(Parent, Info) %% ?CALLBACK_MOD
               end
       end, C).
 
@@ -578,14 +571,14 @@ report_closed_on_chain(#{ tx_type    := _TxType
                         , tx_hash    := TxHash
                         , block_hash := BHash
                         , height     := Height } = I, R, St, C) ->
-    #{ info := #{ callback_mod := Mod, parent := Parent } } = R,
+    #{ info := #{ parent := Parent } } = R,
     RptKey = {closed_on_chain, TxHash},
     I1 = I#{ chan_id => St#st.chan_id },
     C1 = maybe_report(
            RptKey, I1,
            fun(Cx) ->
                    {SignedTx, Cx1} = get_signed_tx(TxHash, Cx),
-                   Mod:channel_closed_on_chain(Parent, I1#{tx => SignedTx}),
+                   aesc_fsm:channel_closed_on_chain(Parent, I1#{tx => SignedTx}), %% ?CALLBACK_MOD
                    Cx1
            end, C),
     ClosedAt = #{ block_hash => BHash
@@ -611,11 +604,11 @@ call_rpt(R, C) when is_function(R, 0) ->
 call_rpt(R, C) when is_function(R, 1) ->
     R(C).
 
-report_channel_unlocked(#{info := #{callback_mod := Mod, parent := Parent}}, Ch, St, C) ->
+report_channel_unlocked(#{info := #{parent := Parent}}, Ch, St, C) ->
     BlockHash = maps:get(top_hash, C),
-    Mod:channel_unlocked(Parent, #{ chan_id => St#st.chan_id
-                                  , channel => Ch
-                                  , block_hash => BlockHash }).
+    aesc_fsm:channel_unlocked(Parent, #{ chan_id => St#st.chan_id
+                                       , channel => Ch
+                                       , block_hash => BlockHash }).
 
 channel_status(ChId, #{top_hash := Hash} = C) ->
     cached_get({ch_status, Hash}, C, fun(C1) -> get_ch_status(ChId, Hash, C1) end).
